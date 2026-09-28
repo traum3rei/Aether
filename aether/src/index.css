@@ -1,0 +1,43 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #030303;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.aether {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.aether canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.aether-mark {
+  position: absolute;
+  top: 28px;
+  left: 32px;
+
+  color: rgba(255, 255, 255, 0.65);
+
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+
+  pointer-events: none;
+}
