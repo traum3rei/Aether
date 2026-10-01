@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { FirstWorldParameters } from './worlds/FirstWorld';
 import { defaultFirstWorldParameters } from './worlds/FirstWorld';
 import { isWorldId, worldNames, type WorldId } from './worlds/WorldId';
 import { AetherEngine } from './engine/AetherEngine';
 import { RoomClient, type RoomMessage } from './rooms/RoomClient';
+import { MusicPlayer } from './MusicPlayer';
 
 interface ParameterControlProps {
   label: string;
@@ -52,11 +54,14 @@ export function App() {
   const [viewers, setViewers] = useState(1);
   const [roomElapsed, setRoomElapsed] = useState(0);
   const [panelVisible, setPanelVisible] = useState(false);
+  const [moveStick, setMoveStick] = useState({ x: 0, y: 0 });
+  const moveStickPointer = useRef<number | null>(null);
   const [roomStatus, setRoomStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
   const [engineError, setEngineError] = useState<string | null>(null);
+  const [roomId, setRoomId] = useState(() => new URLSearchParams(window.location.search).get('room') ?? 'room-01');
   const [worldId, setWorldId] = useState<WorldId>(() => {
     const queryWorld = new URLSearchParams(window.location.search).get('world');
-    return isWorldId(queryWorld) ? queryWorld : 'pelagic';
+    return isWorldId(queryWorld) ? queryWorld : roomId === 'room-04' ? 'y2k' : 'pelagic';
   });
   const [rooms, setRooms] = useState<Record<string, FirstWorldParameters>>(() => {
     try {
@@ -68,7 +73,6 @@ export function App() {
       return {};
     }
   });
-  const [roomId, setRoomId] = useState(() => new URLSearchParams(window.location.search).get('room') ?? 'room-01');
   const [parameters, setParameters] = useState<FirstWorldParameters>(() => {
     const query = new URLSearchParams(window.location.search);
     const encoded = query.get('settings');
@@ -244,6 +248,7 @@ export function App() {
 
   const switchRoom = (nextRoomId: string) => {
     setRoomId(nextRoomId);
+    const nextWorldId = nextRoomId === 'room-04' ? 'y2k' : worldId;
     const query = new URLSearchParams(window.location.search);
     const shared = query.get('settings');
     let nextParameters = readParameters(rooms[nextRoomId]);
@@ -257,9 +262,19 @@ export function App() {
     parametersRef.current = nextParameters;
     parametersRef.current = nextParameters;
     setParameters(nextParameters);
-    runEngineAction((engine) => engine.setWorldParameters(nextParameters));
+    if (nextWorldId !== worldId) {
+      worldIdRef.current = nextWorldId;
+      setWorldId(nextWorldId);
+      if (!roomClientRef.current?.sendWorldUpdate(nextRoomId, nextWorldId)) {
+        setRoomStatus('offline');
+      }
+      runEngineAction((engine) => engine.setWorld(nextWorldId, nextParameters));
+    } else {
+      runEngineAction((engine) => engine.setWorldParameters(nextParameters));
+    }
     const url = new URL(window.location.href);
     url.searchParams.set('room', nextRoomId);
+    url.searchParams.set('world', nextWorldId);
     window.history.replaceState(null, '', url);
   };
 
@@ -286,14 +301,62 @@ export function App() {
     }
   };
 
+  const updateMoveStick = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerId !== moveStickPointer.current) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const radius = bounds.width * 0.34;
+    let x = (event.clientX - (bounds.left + bounds.width / 2)) / radius;
+    let y = (event.clientY - (bounds.top + bounds.height / 2)) / radius;
+    const distance = Math.hypot(x, y);
+    if (distance > 1) {
+      x /= distance;
+      y /= distance;
+    }
+    setMoveStick({ x, y });
+    engineRef.current?.setMoveInput(x, -y);
+  };
+
+  const stopMoveStick = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerId !== moveStickPointer.current) return;
+    moveStickPointer.current = null;
+    setMoveStick({ x: 0, y: 0 });
+    engineRef.current?.setMoveInput(0, 0);
+  };
+
   return (
     <main className="aether" data-world={worldId}>
       <canvas ref={canvasRef} />
+      <MusicPlayer />
+      <div className="movement-hint" aria-hidden="true">
+        <span className="desktop-movement-hint">DRAG TO LOOK · WASD / ARROWS TO MOVE</span>
+        <span className="touch-movement-hint">DRAG TO LOOK · JOYSTICK TO MOVE</span>
+      </div>
+      <div className="mobile-movement" role="group" aria-label="Movement controls">
+        <button
+          className="move-joystick"
+          type="button"
+          aria-label="Move with joystick"
+          onPointerDown={(event) => {
+            moveStickPointer.current = event.pointerId;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            updateMoveStick(event);
+          }}
+          onPointerMove={updateMoveStick}
+          onPointerUp={stopMoveStick}
+          onPointerCancel={stopMoveStick}
+        >
+          <span className="move-joystick-thumb" style={{
+            transform: `translate(${moveStick.x * 25}px, ${moveStick.y * 25}px)`,
+          }} />
+        </button>
+      </div>
 
       <header className="aether-header">
         <div className="aether-mark">AETHER</div>
         <div className="world-title">
-          <span className="world-index">WORLD {worldId === 'pelagic' ? '01' : '02'} · {roomId.toUpperCase()}</span>
+          <span className="world-index">
+            WORLD {worldId === 'pelagic' ? '01' : worldId === 'styx' ? '02' : worldId === 'y2k' ? '03' : '04'} · {roomId.toUpperCase()}
+          </span>
           <span className="world-name">{worldNames[worldId]}</span>
         </div>
       </header>
@@ -327,6 +390,7 @@ export function App() {
               <option value="room-01">01 / ABYSS</option>
               <option value="room-02">02 / BLOOM</option>
               <option value="room-03">03 / DRIFT</option>
+              <option value="room-04">04 / DREAM CIRCUIT</option>
             </select>
           </label>
           <label className="room-select-label">
@@ -336,6 +400,8 @@ export function App() {
             }}>
               <option value="pelagic">01 / PELAGIC</option>
               <option value="styx">02 / STYX</option>
+              <option value="y2k">03 / Y2K</option>
+              <option value="hydros">04 / HYDROS</option>
             </select>
           </label>
           <div className="room-actions">
@@ -368,7 +434,7 @@ export function App() {
           </>
         )}
         <ParameterControl
-          label={worldId === 'styx' ? 'Orbit speed' : 'Flow strength'}
+          label={worldId === 'styx' ? 'Orbit speed' : worldId === 'y2k' ? 'Pulse speed' : worldId === 'hydros' ? 'Current speed' : 'Flow strength'}
           value={parameters.flowStrength}
           min={0}
           max={1.5}
@@ -386,7 +452,7 @@ export function App() {
           />
         )}
         <ParameterControl
-          label={worldId === 'styx' ? 'World scale' : 'World radius'}
+          label={worldId === 'pelagic' ? 'World radius' : 'World scale'}
           value={parameters.radius}
           min={0.8}
           max={3}
@@ -431,9 +497,9 @@ export function App() {
         )}
         </div>
         <p className="control-note">
-          {worldId === 'styx'
-            ? 'World selection and controls are shared with everyone in this room. Motion is simulated locally on each device.'
-            : 'Seed, clock and controls are shared. Particle integration remains local, so late joins do not replay prior motion.'}
+          {worldId === 'pelagic'
+            ? 'Seed, clock and controls are shared. Particle integration remains local, so late joins do not replay prior motion.'
+            : 'World selection and controls are shared with everyone in this room. Motion is simulated locally on each device.'}
         </p>
         {engineError && <p className="engine-error" role="alert">Renderer: {engineError}</p>}
       </aside>
