@@ -45,7 +45,7 @@ function rotateY(point: Node<'vec3'>, angle: Node<'float'>) {
 
 function loopBundle(point: Node<'vec3'>, motionTime: Node<'float'>, phase: number) {
   const distance = float(100).toVar();
-  Loop({ start: 0, end: 10, type: 'int' }, ({ i }) => {
+  Loop({ start: 0, end: 6, type: 'int' }, ({ i }) => {
     const index = float(i);
     const angle = index.mul(2.399).add(phase);
     const orbit = index.mul(0.036).add(0.08);
@@ -125,6 +125,7 @@ export class RaymarchWorld {
   private readonly glow = uniform(0.34);
   private readonly marchSpeed = uniform(0.42);
   private readonly aspect = uniform(1);
+  private readonly cameraDirection = new THREE.Vector3();
   private elapsed = 0;
 
   constructor(scene: THREE.Scene, parameters: Partial<FirstWorldParameters> = {}) {
@@ -145,7 +146,7 @@ export class RaymarchWorld {
       const wideHalo = float(0).toVar();
       const tightHalo = float(0).toVar();
 
-      Loop({ start: 0, end: 56, type: 'int' }, () => {
+      Loop({ start: 0, end: 20, type: 'int' }, () => {
         If(hitFlag.lessThan(0.5).and(travel.lessThan(14)), () => {
           const point = rayOrigin.add(rayDirection.mul(travel));
           const distance = sceneDistance(point.mul(this.fieldScale), this.time)
@@ -167,13 +168,27 @@ export class RaymarchWorld {
       const surfaceColor = background.toVar();
       If(hitFlag.greaterThan(0.5), () => {
         const epsilon = float(0.003);
+        const negativeEpsilon = epsilon.mul(-1);
+        const sample1 = sceneDistance(
+          hitPoint.add(vec3(epsilon, negativeEpsilon, negativeEpsilon)).mul(this.fieldScale),
+          this.time,
+        );
+        const sample2 = sceneDistance(
+          hitPoint.add(vec3(negativeEpsilon, negativeEpsilon, epsilon)).mul(this.fieldScale),
+          this.time,
+        );
+        const sample3 = sceneDistance(
+          hitPoint.add(vec3(negativeEpsilon, epsilon, negativeEpsilon)).mul(this.fieldScale),
+          this.time,
+        );
+        const sample4 = sceneDistance(
+          hitPoint.add(vec3(epsilon, epsilon, epsilon)).mul(this.fieldScale),
+          this.time,
+        );
         const normal = normalize(vec3(
-          sceneDistance(hitPoint.add(vec3(epsilon, 0, 0)).mul(this.fieldScale), this.time)
-            .sub(sceneDistance(hitPoint.sub(vec3(epsilon, 0, 0)).mul(this.fieldScale), this.time)),
-          sceneDistance(hitPoint.add(vec3(0, epsilon, 0)).mul(this.fieldScale), this.time)
-            .sub(sceneDistance(hitPoint.sub(vec3(0, epsilon, 0)).mul(this.fieldScale), this.time)),
-          sceneDistance(hitPoint.add(vec3(0, 0, epsilon)).mul(this.fieldScale), this.time)
-            .sub(sceneDistance(hitPoint.sub(vec3(0, 0, epsilon)).mul(this.fieldScale), this.time)),
+          sample1.sub(sample2).sub(sample3).add(sample4),
+          sample3.add(sample4).sub(sample1).sub(sample2),
+          sample2.add(sample4).sub(sample1).sub(sample3),
         ));
 
         const surfacePoint = hitPoint.mul(this.fieldScale);
@@ -242,8 +257,8 @@ export class RaymarchWorld {
 
     const distance = 1;
     const viewSize = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const direction = camera.getWorldDirection(new THREE.Vector3());
-    this.plane.position.copy(camera.position).addScaledVector(direction, distance);
+    camera.getWorldDirection(this.cameraDirection);
+    this.plane.position.copy(camera.position).addScaledVector(this.cameraDirection, distance);
     this.plane.quaternion.copy(camera.quaternion);
     this.plane.scale.set(viewSize * camera.aspect, viewSize, 1);
   }

@@ -178,6 +178,7 @@ export class AetherEngine {
       const previousWorld = this.world;
       this.world = nextWorld;
       this.worldId = worldId;
+      this.renderer.setResolutionScale(worldId === 'raymarch' ? 0.5 : 1);
       this.scene.background = new THREE.Color(
         worldId === 'styx' ? 0x10071e
           : worldId === 'y2k' ? 0x09051d

@@ -122,6 +122,7 @@ body {
   z-index: 3;
   padding: 9px 11px;
   border: 1px solid rgba(220, 237, 245, 0.14);
+  border-radius: 5px;
   background: rgba(8, 13, 18, 0.72);
   color: rgba(235, 242, 246, 0.72);
   font-size: 8px;
@@ -140,6 +141,7 @@ body {
   overscroll-behavior: contain;
   padding: 16px 18px 13px;
   border: 1px solid rgba(220, 237, 245, 0.12);
+  border-radius: 9px;
   background: rgba(8, 13, 18, 0.82);
   backdrop-filter: blur(18px);
   opacity: 0;
@@ -410,6 +412,7 @@ body {
   min-height: 92px;
   padding: 13px 16px 12px 13px;
   border: 1px solid rgba(153, 246, 255, 0.34);
+  border-radius: 9px;
   background:
     linear-gradient(118deg, rgba(255, 58, 195, 0.13), transparent 44%),
     linear-gradient(300deg, rgba(44, 236, 255, 0.1), transparent 48%),
@@ -422,6 +425,7 @@ body {
   position: absolute;
   inset: 4px;
   border: 1px solid rgba(255, 255, 255, 0.045);
+  border-radius: 5px;
   content: "";
   pointer-events: none;
 }
