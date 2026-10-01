@@ -9,7 +9,7 @@ const allowedParameters = new Set([
   'particleCount', 'flowScale', 'flowStrength', 'damping', 'confinement',
   'radius', 'timeScale', 'sharpness', 'glow', 'particleSize',
 ]);
-const allowedWorlds = new Set(['pelagic', 'styx', 'y2k', 'hydros']);
+const allowedWorlds = new Set(['pelagic', 'styx', 'y2k', 'hydros', 'raymarch']);
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));

@@ -261,22 +261,22 @@ export class StyxWorld {
 
     if (camera) {
       const cameraTime = this.cameraElapsed;
-      const sweepX = Math.sin(cameraTime * 0.13) * 0.95
-        + Math.sin(cameraTime * 0.055) * 0.42;
-      const sweepY = Math.sin(cameraTime * 0.09) * 0.48
-        + Math.cos(cameraTime * 0.04) * 0.18;
-      const sweepZ = 3.65
-        + Math.sin(cameraTime * 0.07) * 0.48
-        + Math.sin(cameraTime * 0.035) * 0.22
+      const sweepX = Math.sin(cameraTime * 0.13) * 1.5
+        + Math.sin(cameraTime * 0.055) * 0.65;
+      const sweepY = Math.sin(cameraTime * 0.09) * 0.72
+        + Math.cos(cameraTime * 0.04) * 0.28;
+      const sweepZ = 3.05
+        + Math.sin(cameraTime * 0.07) * 0.58
+        + Math.sin(cameraTime * 0.035) * 0.34
         - hit * 0.12;
       camera.position.set(sweepX, sweepY, sweepZ);
       camera.lookAt(
-        Math.sin(cameraTime * 0.045) * 0.3,
-        Math.sin(cameraTime * 0.065) * 0.18,
-        0,
+        sweepX + Math.cos(cameraTime * 0.13) * 1.1,
+        sweepY + Math.sin(cameraTime * 0.19) * 0.18,
+        -1.5,
       );
       camera.rotation.z = Math.sin(cameraTime * 0.055) * 0.035;
-      camera.fov = 49 + Math.sin(cameraTime * 0.075) * 4 + Math.sin(cameraTime * 0.038) * 2;
+      camera.fov = 59 + Math.sin(cameraTime * 0.075) * 3 + Math.sin(cameraTime * 0.038) * 1.5;
       camera.updateProjectionMatrix();
     }
     this.starField.rotation.y = t * 0.026;

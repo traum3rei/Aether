@@ -8,6 +8,7 @@ import {
   instanceIndex,
   instancedArray,
   max,
+  min,
   positionLocal,
   select,
   storage,
@@ -25,7 +26,7 @@ import { defaultFirstWorldParameters } from './FirstWorld';
 
 const WATER_GRID_SIZE = 192;
 const WATER_GRID_COUNT = WATER_GRID_SIZE * WATER_GRID_SIZE;
-const WATER_EXTENT = 24;
+const WATER_EXTENT = 17;
 const WATER_CELL_SIZE = WATER_EXTENT / (WATER_GRID_SIZE - 1);
 
 function createInitialWaterState() {
@@ -34,8 +35,11 @@ function createInitialWaterState() {
     const z = row * WATER_CELL_SIZE - WATER_EXTENT / 2;
     for (let column = 0; column < WATER_GRID_SIZE; column += 1) {
       const x = column * WATER_CELL_SIZE - WATER_EXTENT / 2;
-      const height = Math.sin(x * 0.45 + z * 0.28)
-        * Math.cos(z * 0.36 - x * 0.12) * 0.004;
+      const broadWave = Math.sin(x * 0.2 + z * 0.13)
+        * Math.cos(z * 0.17 - x * 0.1) * 0.012;
+      const spiralDistance = Math.hypot(x, z + 2.7);
+      const spiralRipple = Math.sin(spiralDistance * 1.8) * Math.exp(-spiralDistance * 0.18) * 0.008;
+      const height = broadWave + spiralRipple;
       state[(row * WATER_GRID_SIZE + column) * 3] = height;
     }
   }
@@ -72,6 +76,7 @@ export class HydrosWorld {
   private readonly waterStepBToA: ComputeNode;
   private readonly waterSurface: WaterMesh;
   private readonly waterNormalTexture: THREE.CanvasTexture;
+  private readonly poolTileTexture: THREE.CanvasTexture;
   private readonly lightShafts: THREE.Sprite[] = [];
   private readonly spiralRig = new THREE.Group();
   private readonly environment: THREE.CanvasTexture;
@@ -104,15 +109,18 @@ export class HydrosWorld {
     this.waterNormalTexture = this.createWaterNormals();
     this.waterNormalTexture.wrapS = THREE.RepeatWrapping;
     this.waterNormalTexture.wrapT = THREE.RepeatWrapping;
+    this.poolTileTexture = this.createPoolTileTexture();
+    this.poolTileTexture.wrapS = THREE.RepeatWrapping;
+    this.poolTileTexture.wrapT = THREE.RepeatWrapping;
     this.waterSurface = new WaterMesh(this.waterGeometry, {
       waterNormals: this.waterNormalTexture,
-      alpha: 0.86,
-      size: 90,
-      sunColor: 0x7fb7c7,
+      alpha: 0.64,
+      size: 42,
+      sunColor: 0xa4f1ff,
       sunDirection: new THREE.Vector3(-0.35, 0.86, 0.37).normalize(),
-      waterColor: 0x0c4560,
-      distortionScale: 0.2,
-      resolutionScale: 0.5,
+      waterColor: 0x07344c,
+      distortionScale: 0.22,
+      resolutionScale: 0.75,
     });
     this.waterSurface.material.positionNode = Fn(() => {
       const position = positionLocal.toVar();
@@ -149,6 +157,7 @@ export class HydrosWorld {
     this.waterSurface.rotation.x = -Math.PI / 2;
     this.waterSurface.position.y = -0.82;
     this.group.add(this.waterSurface);
+    this.addPoolShell();
     this.addReef();
 
     for (let index = 0; index < 7; index += 1) {
@@ -175,7 +184,7 @@ export class HydrosWorld {
       const angle = index * 2.399963;
       const radius = 1.5 + ((index * 37) % 100) / 34;
       this.bubblePositions[index * 3] = Math.cos(angle) * radius;
-      this.bubblePositions[index * 3 + 1] = ((index * 71) % 100) / 25 - 2;
+      this.bubblePositions[index * 3 + 1] = -3.75 + ((index * 71) % 100) / 36;
       this.bubblePositions[index * 3 + 2] = Math.sin(angle) * radius - 1.2;
     }
     this.bubbleBasePositions = this.bubblePositions.slice();
@@ -208,7 +217,7 @@ export class HydrosWorld {
     const maxDimension = Math.max(size.x, size.y, size.z);
     if (maxDimension === 0) throw new Error('The Hydros spiral has no measurable geometry.');
 
-    const scale = 2.8 / maxDimension;
+    const scale = 7.8 / maxDimension;
     spiral.position.copy(center)
       .multiplyScalar(-scale)
       .applyAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
@@ -217,16 +226,16 @@ export class HydrosWorld {
     spiral.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
       child.geometry.computeVertexNormals();
-      const material = this.createMaterial(0x45dfff, 0x08bff5, 0.16, 0.12);
-      material.emissiveIntensity = 0.7;
+      const material = this.createMaterial(0x278ba2, 0x07536a, 0.32, 0.2);
+      material.emissiveIntensity = 0.42;
       material.clearcoat = 1;
-      material.clearcoatRoughness = 0.08;
+      material.clearcoatRoughness = 0.13;
       child.material = material;
     });
     this.spiralRig.add(spiral);
-    this.spiralRig.position.set(0, -0.6, 0);
+    this.spiralRig.position.set(0, -0.42, -4.2);
     this.group.add(this.spiralRig);
-    this.spiralRig.scale.setScalar(0.78);
+    this.spiralRig.scale.setScalar(0.92);
   }
 
   setParameters(parameters: Partial<FirstWorldParameters>) {
@@ -271,8 +280,8 @@ export class HydrosWorld {
 
     const positions = this.bubbleGeometry.getAttribute('position') as THREE.BufferAttribute;
     for (let index = 0; index < this.bubblePositions.length / 3; index += 1) {
-      const baseY = ((index * 71) % 100) / 25 - 2;
-      positions.setY(index, ((baseY + t * (0.08 + (index % 5) * 0.012) + 2) % 4) - 2);
+      const baseY = -3.75 + ((index * 71) % 100) / 36;
+      positions.setY(index, ((baseY + t * (0.08 + (index % 5) * 0.012) + 3.75) % 2.85) - 3.75);
       positions.setX(index, this.bubbleBasePositions[index * 3] + Math.sin(t * 0.35 + index) * 0.025);
     }
     positions.needsUpdate = true;
@@ -280,12 +289,18 @@ export class HydrosWorld {
     if (camera) {
       const cameraTime = this.cameraElapsed;
       camera.position.set(
-        Math.sin(cameraTime * 0.08) * 0.42,
-        1.55 + Math.sin(cameraTime * 0.065) * 0.16,
-        4.8 + Math.sin(cameraTime * 0.05) * 0.22,
+        Math.sin(cameraTime * 0.08) * 0.62,
+        -0.4 + Math.sin(cameraTime * 0.065) * 0.045,
+        3.5 + Math.sin(cameraTime * 0.05) * 0.22,
       );
-      camera.lookAt(0, -0.58, -0.15);
-      camera.rotation.z = Math.sin(cameraTime * 0.045) * 0.018;
+      camera.lookAt(
+        Math.sin(cameraTime * 0.08 + 0.7) * 0.35,
+        -1.85 + Math.sin(cameraTime * 0.11) * 0.06,
+        -5.2,
+      );
+      camera.rotation.z = Math.sin(cameraTime * 0.045) * 0.028;
+      camera.fov = 68 + Math.sin(cameraTime * 0.07) * 2;
+      camera.updateProjectionMatrix();
     }
   }
 
@@ -312,6 +327,7 @@ export class HydrosWorld {
       this.environment.dispose();
       this.scene.environment = null;
     }
+    this.poolTileTexture.dispose();
   }
 
   private createMaterial(color: number, emissive: number, metalness: number, roughness: number) {
@@ -375,7 +391,7 @@ export class HydrosWorld {
       const laplacianZ = left.z.add(right.z).add(upper.z).add(lower.z)
         .sub(center.z.mul(4))
         .div(spacing.mul(spacing));
-      const drag = exp(dt.mul(-0.22));
+      const drag = exp(dt.mul(-0.65));
       const velocityX = center.y
         .sub(pressureX.mul(dt))
         .add(laplacianX.mul(dt).mul(0.008))
@@ -384,19 +400,21 @@ export class HydrosWorld {
         .sub(pressureZ.mul(dt))
         .add(laplacianZ.mul(dt).mul(0.008))
         .mul(drag);
+      const boundedVelocityX = max(min(velocityX, float(0.18)), float(-0.18));
+      const boundedVelocityZ = max(min(velocityZ, float(0.18)), float(-0.18));
       const nextVelocityX = select(
         column.equal(0),
         float(0),
-        select(column.equal(WATER_GRID_SIZE - 1), float(0), velocityX),
+        select(column.equal(WATER_GRID_SIZE - 1), float(0), boundedVelocityX),
       );
       const nextVelocityZ = select(
         row.equal(0),
         float(0),
-        select(row.equal(WATER_GRID_SIZE - 1), float(0), velocityZ),
+        select(row.equal(WATER_GRID_SIZE - 1), float(0), boundedVelocityZ),
       );
       const nextHeight = max(
-        center.x.sub(divergence.mul(dt)),
-        waterDepth.mul(-0.85),
+        min(center.x.sub(divergence.mul(dt)), float(0.045)),
+        float(-0.045),
       );
       target.element(instanceIndex).assign(vec3(
         nextHeight,
@@ -404,6 +422,75 @@ export class HydrosWorld {
         nextVelocityZ,
       ));
     })().compute(WATER_GRID_COUNT);
+  }
+
+  private addPoolShell() {
+    const tileMaterial = new THREE.MeshPhysicalMaterial({
+      color: 0x7899a0,
+      map: this.poolTileTexture,
+      roughness: 0.32,
+      metalness: 0.12,
+      clearcoat: 0.32,
+      clearcoatRoughness: 0.28,
+      side: THREE.DoubleSide,
+    });
+    this.materials.push(tileMaterial);
+
+    const addTiledPlane = (
+      width: number,
+      height: number,
+      position: THREE.Vector3,
+      rotation: THREE.Euler,
+    ) => {
+      const geometry = new THREE.PlaneGeometry(width, height, 1, 1);
+      const uvAttribute = geometry.getAttribute('uv');
+      for (let index = 0; index < uvAttribute.count; index += 1) {
+        uvAttribute.setXY(
+          index,
+          uvAttribute.getX(index) * width / 0.9,
+          uvAttribute.getY(index) * height / 0.9,
+        );
+      }
+      uvAttribute.needsUpdate = true;
+      const mesh = new THREE.Mesh(geometry, tileMaterial);
+      mesh.position.copy(position);
+      mesh.rotation.copy(rotation);
+      this.group.add(mesh);
+    };
+
+    const bottom = -4.55;
+    const wallTop = -0.35;
+    const wallHeight = wallTop - bottom;
+    addTiledPlane(17, 17, new THREE.Vector3(0, bottom, -1.8), new THREE.Euler(-Math.PI / 2, 0, 0));
+    addTiledPlane(17, wallHeight, new THREE.Vector3(-8.5, (wallTop + bottom) / 2, -1.8), new THREE.Euler(0, Math.PI / 2, 0));
+    addTiledPlane(17, wallHeight, new THREE.Vector3(8.5, (wallTop + bottom) / 2, -1.8), new THREE.Euler(0, -Math.PI / 2, 0));
+    addTiledPlane(17, wallHeight, new THREE.Vector3(0, (wallTop + bottom) / 2, -9.3), new THREE.Euler(0, 0, 0));
+  }
+
+  private createPoolTileTexture() {
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Unable to create the Hydros pool tile texture.');
+
+    const tile = context.createLinearGradient(0, 0, size, size);
+    tile.addColorStop(0, '#496f7a');
+    tile.addColorStop(0.5, '#345866');
+    tile.addColorStop(1, '#244653');
+    context.fillStyle = tile;
+    context.fillRect(0, 0, size, size);
+    context.fillStyle = 'rgba(178, 228, 232, 0.32)';
+    context.fillRect(0, 0, size, 3);
+    context.fillRect(0, 0, 3, size);
+    context.fillStyle = 'rgba(5, 26, 37, 0.72)';
+    context.fillRect(0, size - 4, size, 4);
+    context.fillRect(size - 4, 0, 4, size);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
   }
 
   private createWaterNormals() {
@@ -440,18 +527,16 @@ export class HydrosWorld {
       return THREE.MathUtils.lerp(top, bottom, blendY);
     };
     const heightAt = (u: number, v: number) => (
-      noise(u, v, 32) * 0.36
-      + noise(u, v, 64) * 0.3
-      + noise(u, v, 96) * 0.22
-      + noise(u, v, 128) * 0.12
+      noise(u, v, 20) * 0.62
+      + noise(u, v, 40) * 0.38
     );
     const offset = 1 / size;
     for (let y = 0; y < size; y += 1) {
       const v = y / size;
       for (let x = 0; x < size; x += 1) {
         const u = x / size;
-        const slopeX = (heightAt(u + offset, v) - heightAt(u - offset, v)) * size * 0.008;
-        const slopeY = (heightAt(u, v + offset) - heightAt(u, v - offset)) * size * 0.008;
+        const slopeX = (heightAt(u + offset, v) - heightAt(u - offset, v)) * size * 0.003;
+        const slopeY = (heightAt(u, v + offset) - heightAt(u, v - offset)) * size * 0.003;
         const normalLength = Math.hypot(slopeX, slopeY, 1);
         const index = (y * size + x) * 4;
         image.data[index] = Math.round(((-slopeX / normalLength) * 0.5 + 0.5) * 255);

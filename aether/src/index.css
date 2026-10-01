@@ -366,6 +366,38 @@ body {
   box-shadow: 0 0 10px #45dfff;
 }
 
+.aether[data-world="raymarch"] .aether-mark,
+.aether[data-world="raymarch"] .world-name {
+  color: #f1e5e3;
+  text-shadow: 0 0 18px rgba(255, 82, 66, 0.48);
+}
+
+.aether[data-world="raymarch"] .world-index,
+.aether[data-world="raymarch"] .control-heading,
+.aether[data-world="raymarch"] .control-note {
+  color: rgba(255, 176, 157, 0.64);
+}
+
+.aether[data-world="raymarch"] .world-controls,
+.aether[data-world="raymarch"] .panel-reveal {
+  border-color: rgba(255, 113, 90, 0.32);
+  background-color: rgba(20, 8, 13, 0.9);
+  box-shadow: 0 0 36px rgba(255, 61, 48, 0.1), inset 0 0 24px rgba(255, 103, 79, 0.04);
+}
+
+.aether[data-world="raymarch"] .parameter-control input {
+  accent-color: #ff7968;
+}
+
+.aether[data-world="raymarch"] .live-indicator {
+  color: #ffb29f;
+}
+
+.aether[data-world="raymarch"] .live-indicator::before {
+  background: #ff8068;
+  box-shadow: 0 0 10px #ff493f;
+}
+
 .music-player {
   position: absolute;
   left: 30px;

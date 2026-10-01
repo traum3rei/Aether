@@ -8,7 +8,8 @@ type AetherWorld =
   | FirstWorld
   | import('../worlds/StyxWorld').StyxWorld
   | import('../worlds/Y2KWorld').Y2KWorld
-  | import('../worlds/HydrosWorld').HydrosWorld;
+  | import('../worlds/HydrosWorld').HydrosWorld
+  | import('../worlds/RaymarchWorld').RaymarchWorld;
 
 export class AetherEngine {
   private readonly renderer: AetherRenderer;
@@ -98,7 +99,7 @@ export class AetherEngine {
       this.world.update(
         gpu,
         Math.min(deltaSeconds, 1 / 30),
-        this.navigationActive ? undefined : this.camera,
+        this.navigationActive && this.worldId !== 'raymarch' ? undefined : this.camera,
       );
       if (this.navigationActive) this.updateNavigation(deltaSeconds);
 
@@ -181,6 +182,7 @@ export class AetherEngine {
         worldId === 'styx' ? 0x10071e
           : worldId === 'y2k' ? 0x09051d
             : worldId === 'hydros' ? 0x03152e
+              : worldId === 'raymarch' ? 0x080817
               : 0x020202,
       );
       this.scene.fog = worldId === 'hydros'
@@ -330,6 +332,10 @@ export class AetherEngine {
     if (worldId === 'hydros') {
       const { HydrosWorld } = await import('../worlds/HydrosWorld');
       return new HydrosWorld(this.scene, parameters);
+    }
+    if (worldId === 'raymarch') {
+      const { RaymarchWorld } = await import('../worlds/RaymarchWorld');
+      return new RaymarchWorld(this.scene, parameters);
     }
     return new FirstWorld(this.scene, parameters);
   }

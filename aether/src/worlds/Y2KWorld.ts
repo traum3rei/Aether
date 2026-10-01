@@ -141,13 +141,17 @@ export class Y2KWorld {
     if (camera) {
       const cameraTime = this.cameraElapsed;
       camera.position.set(
-        Math.sin(cameraTime * 0.12) * 0.75,
-        Math.sin(cameraTime * 0.08) * 0.38,
-        5.4 + Math.sin(cameraTime * 0.07) * 0.3 - pulse * 0.12,
+        Math.sin(cameraTime * 0.12) * 1.05,
+        Math.sin(cameraTime * 0.08) * 0.58,
+        4.1 + Math.sin(cameraTime * 0.07) * 0.42 - pulse * 0.12,
       );
-      camera.lookAt(Math.sin(cameraTime * 0.05) * 0.12, 0, 0);
-      camera.rotation.z = Math.sin(cameraTime * 0.06) * 0.025;
-      camera.fov = 55 + Math.sin(cameraTime * 0.09) * 2;
+      camera.lookAt(
+        Math.sin(cameraTime * 0.12 + 0.8) * 0.72,
+        Math.sin(cameraTime * 0.08 + 1.1) * 0.36,
+        -2.25,
+      );
+      camera.rotation.z = Math.sin(cameraTime * 0.06) * 0.04;
+      camera.fov = 64 + Math.sin(cameraTime * 0.09) * 2;
       camera.updateProjectionMatrix();
     }
 

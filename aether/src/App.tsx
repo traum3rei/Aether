@@ -61,7 +61,9 @@ export function App() {
   const [roomId, setRoomId] = useState(() => new URLSearchParams(window.location.search).get('room') ?? 'room-01');
   const [worldId, setWorldId] = useState<WorldId>(() => {
     const queryWorld = new URLSearchParams(window.location.search).get('world');
-    return isWorldId(queryWorld) ? queryWorld : roomId === 'room-04' ? 'y2k' : 'pelagic';
+    return isWorldId(queryWorld)
+      ? queryWorld
+      : roomId === 'room-04' ? 'y2k' : roomId === 'room-05' ? 'raymarch' : 'pelagic';
   });
   const [rooms, setRooms] = useState<Record<string, FirstWorldParameters>>(() => {
     try {
@@ -248,7 +250,9 @@ export function App() {
 
   const switchRoom = (nextRoomId: string) => {
     setRoomId(nextRoomId);
-    const nextWorldId = nextRoomId === 'room-04' ? 'y2k' : worldId;
+    const nextWorldId = nextRoomId === 'room-04'
+      ? 'y2k'
+      : nextRoomId === 'room-05' ? 'raymarch' : worldId;
     const query = new URLSearchParams(window.location.search);
     const shared = query.get('settings');
     let nextParameters = readParameters(rooms[nextRoomId]);
@@ -355,7 +359,7 @@ export function App() {
         <div className="aether-mark">AETHER</div>
         <div className="world-title">
           <span className="world-index">
-            WORLD {worldId === 'pelagic' ? '01' : worldId === 'styx' ? '02' : worldId === 'y2k' ? '03' : '04'} · {roomId.toUpperCase()}
+            WORLD {worldId === 'pelagic' ? '01' : worldId === 'styx' ? '02' : worldId === 'y2k' ? '03' : worldId === 'hydros' ? '04' : '05'} · {roomId.toUpperCase()}
           </span>
           <span className="world-name">{worldNames[worldId]}</span>
         </div>
@@ -391,6 +395,7 @@ export function App() {
               <option value="room-02">02 / BLOOM</option>
               <option value="room-03">03 / DRIFT</option>
               <option value="room-04">04 / DREAM CIRCUIT</option>
+              <option value="room-05">05 / GHOST CIRCUIT</option>
             </select>
           </label>
           <label className="room-select-label">
@@ -402,6 +407,7 @@ export function App() {
               <option value="styx">02 / STYX</option>
               <option value="y2k">03 / Y2K</option>
               <option value="hydros">04 / HYDROS</option>
+              <option value="raymarch">05 / RAYMARCH</option>
             </select>
           </label>
           <div className="room-actions">
@@ -434,7 +440,7 @@ export function App() {
           </>
         )}
         <ParameterControl
-          label={worldId === 'styx' ? 'Orbit speed' : worldId === 'y2k' ? 'Pulse speed' : worldId === 'hydros' ? 'Current speed' : 'Flow strength'}
+          label={worldId === 'styx' ? 'Orbit speed' : worldId === 'y2k' ? 'Pulse speed' : worldId === 'hydros' ? 'Current speed' : worldId === 'raymarch' ? 'Pulse speed' : 'Flow strength'}
           value={parameters.flowStrength}
           min={0}
           max={1.5}
@@ -452,7 +458,7 @@ export function App() {
           />
         )}
         <ParameterControl
-          label={worldId === 'pelagic' ? 'World radius' : 'World scale'}
+          label={worldId === 'pelagic' ? 'World radius' : worldId === 'raymarch' ? 'Loop scale' : 'World scale'}
           value={parameters.radius}
           min={0.8}
           max={3}
