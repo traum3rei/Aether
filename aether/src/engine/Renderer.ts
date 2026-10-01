@@ -6,11 +6,11 @@ export class AetherRenderer {
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGPURenderer({
       canvas,
-      antialias: true,
+      antialias: false,
     });
 
     this.renderer.setPixelRatio(
-      Math.min(window.devicePixelRatio, 2),
+      Math.min(window.devicePixelRatio, 1.25),
     );
 
     this.renderer.setSize(

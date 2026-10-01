@@ -1,32 +1,22 @@
-# React + TypeScript + Vite
+# Aether
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+> A digital medium for creating, performing, and experiencing living audiovisual worlds.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Install dependencies with `npm install`, then run both the Vite app and WebSocket room server:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+npm run dev:all
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+The app is served by Vite. The room server listens on port `8787` by default and is proxied by Vite at `/ws`. Set `PORT` to change the room server port.
+
+Rooms are in-memory and ephemeral: a room's parameter state, seed, and shared start epoch are retained while viewers are connected, then discarded when the last viewer disconnects. Parameter updates are ordered by server revisions and applied at a shared effective timestamp. Each viewer runs the world simulation locally, so exact pixel-identical motion across different GPUs is not guaranteed. Late joiners receive the same seed and parameters but do not replay the room's prior GPU integration history.
+
+## Validation
+
+```sh
+npm run build
+npm run lint
+```
