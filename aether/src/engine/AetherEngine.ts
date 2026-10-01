@@ -4,6 +4,8 @@ import { AetherRenderer } from './Renderer';
 import { FirstWorld, type FirstWorldParameters } from '../worlds/FirstWorld';
 import type { WorldId } from '../worlds/WorldId';
 
+const MAX_NAVIGATION_DISTANCE = 8;
+
 type AetherWorld =
   | FirstWorld
   | import('../worlds/StyxWorld').StyxWorld
@@ -23,6 +25,9 @@ export class AetherEngine {
   private navigationActive = false;
   private navigationYaw = 0;
   private navigationPitch = 0;
+  private navigationStartPosition: THREE.Vector3 | null = null;
+  private navigationStartYaw = 0;
+  private navigationStartPitch = 0;
   private moveSide = 0;
   private moveForward = 0;
   private readonly pressedKeys = new Set<string>();
@@ -236,6 +241,11 @@ export class AetherEngine {
   private handleKeyDown = (event: KeyboardEvent) => {
     if (event.target instanceof HTMLElement && event.target.isContentEditable) return;
     if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes((event.target as HTMLElement | null)?.tagName ?? '')) return;
+    if (event.code === 'KeyR') {
+      event.preventDefault();
+      this.returnToStartView();
+      return;
+    }
     if (!['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'].includes(event.code)) return;
     event.preventDefault();
     this.pressedKeys.add(event.code);
@@ -286,9 +296,26 @@ export class AetherEngine {
     if (this.navigationActive) return;
     this.camera.updateMatrixWorld();
     const direction = this.camera.getWorldDirection(new THREE.Vector3());
-    this.navigationYaw = Math.atan2(direction.x, -direction.z);
+    this.navigationYaw = Math.atan2(-direction.x, -direction.z);
     this.navigationPitch = Math.asin(THREE.MathUtils.clamp(direction.y, -1, 1));
+    this.navigationStartPosition = this.camera.position.clone();
+    this.navigationStartYaw = this.navigationYaw;
+    this.navigationStartPitch = this.navigationPitch;
     this.navigationActive = true;
+  }
+
+  returnToStartView() {
+    this.enableNavigation();
+    if (!this.navigationStartPosition) return;
+    this.moveSide = 0;
+    this.moveForward = 0;
+    this.pressedKeys.clear();
+    this.activePointerId = null;
+    this.camera.position.copy(this.navigationStartPosition);
+    this.navigationYaw = this.navigationStartYaw;
+    this.navigationPitch = this.navigationStartPitch;
+    this.camera.rotation.order = 'YXZ';
+    this.camera.rotation.set(this.navigationPitch, this.navigationYaw, 0);
   }
 
   private updateNavigation(deltaSeconds: number) {
@@ -301,20 +328,32 @@ export class AetherEngine {
     const movement = new THREE.Vector2(side, forward);
     if (movement.lengthSq() > 1) movement.normalize();
     const distance = 2.8 * deltaSeconds;
-    this.camera.position.x += (
-      Math.cos(this.navigationYaw) * movement.x
-      + Math.sin(this.navigationYaw) * movement.y
-    ) * distance;
-    this.camera.position.z += (
-      Math.sin(this.navigationYaw) * movement.x
-      - Math.cos(this.navigationYaw) * movement.y
-    ) * distance;
+    const forwardDirection = this.camera.getWorldDirection(new THREE.Vector3());
+    forwardDirection.y = 0;
+    forwardDirection.normalize();
+    const rightDirection = new THREE.Vector3()
+      .crossVectors(forwardDirection, new THREE.Vector3(0, 1, 0));
+    const nextPosition = this.camera.position.clone()
+      .addScaledVector(rightDirection, movement.x * distance)
+      .addScaledVector(forwardDirection, movement.y * distance);
+    if (this.navigationStartPosition) {
+      const offsetX = nextPosition.x - this.navigationStartPosition.x;
+      const offsetZ = nextPosition.z - this.navigationStartPosition.z;
+      const offsetLength = Math.hypot(offsetX, offsetZ);
+      if (offsetLength > MAX_NAVIGATION_DISTANCE) {
+        const scale = MAX_NAVIGATION_DISTANCE / offsetLength;
+        nextPosition.x = this.navigationStartPosition.x + offsetX * scale;
+        nextPosition.z = this.navigationStartPosition.z + offsetZ * scale;
+      }
+    }
+    this.camera.position.copy(nextPosition);
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.set(this.navigationPitch, this.navigationYaw, 0);
   }
 
   private resetNavigation() {
     this.navigationActive = false;
+    this.navigationStartPosition = null;
     this.moveSide = 0;
     this.moveForward = 0;
     this.pressedKeys.clear();

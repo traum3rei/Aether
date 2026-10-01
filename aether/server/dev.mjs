@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 
 const commands = [
   ['rooms', ['server/rooms.js']],
-  ['vite', ['node_modules/vite/bin/vite.js']],
+  ['vite', ['node_modules/vite/bin/vite.js', '--host']],
 ];
 const children = commands.map(([name, script]) => {
   const child = spawn(process.execPath, script, { stdio: 'inherit' });

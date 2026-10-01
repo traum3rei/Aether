@@ -25,13 +25,18 @@ function formatTime(time: number) {
   return `${minutes}:${seconds}`;
 }
 
-export function MusicPlayer() {
+interface MusicPlayerProps {
+  onExpandedChange: (expanded: boolean) => void;
+}
+
+export function MusicPlayer({ onExpandedChange }: MusicPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [trackIndex, setTrackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const track = tracks[trackIndex];
 
   useEffect(() => {
@@ -76,7 +81,7 @@ export function MusicPlayer() {
   };
 
   return (
-    <section className="music-player" aria-label="Music player">
+    <section className={`music-player${isExpanded ? ' expanded' : ''}`} aria-label="Music player">
       <audio
         ref={audioRef}
         src={track?.url}
@@ -103,7 +108,21 @@ export function MusicPlayer() {
       <div className="player-content">
         <div className="player-topline">
           <span className="player-label">AETHER FM</span>
-          <span className="player-frequency">88.8 ◉</span>
+          <span className="player-topline-actions">
+            <span className="player-frequency">88.8 ◉</span>
+            <button
+              type="button"
+              className="player-button player-collapse"
+              aria-label="Collapse music player"
+              aria-expanded={isExpanded}
+              onClick={() => {
+                setIsExpanded(false);
+                onExpandedChange(false);
+              }}
+            >
+              ×
+            </button>
+          </span>
         </div>
         <div className="player-track" title={track?.name ?? 'No MP3 tracks found'}>
           {track?.name ?? 'NO SIGNAL / ADD MP3'}
@@ -156,6 +175,29 @@ export function MusicPlayer() {
         {playbackError
           ? <p className="player-message" role="alert">{playbackError}</p>
           : !track && <p className="player-message">Place .mp3 files in src/assets/music to build your playlist.</p>}
+      </div>
+      <div className="player-compact-controls">
+        <button
+          type="button"
+          className="player-button player-play"
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+          disabled={!track}
+          onClick={togglePlayback}
+        >
+          {isPlaying ? 'PAUSE' : 'PLAY'}
+        </button>
+        <button
+          type="button"
+          className="player-button player-expand"
+          aria-label="Expand music player"
+          aria-expanded={isExpanded}
+          onClick={() => {
+            setIsExpanded(true);
+            onExpandedChange(true);
+          }}
+        >
+          +
+        </button>
       </div>
     </section>
   );

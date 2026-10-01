@@ -330,12 +330,22 @@ export function App() {
   return (
     <main className="aether" data-world={worldId}>
       <canvas ref={canvasRef} />
-      <MusicPlayer />
+      <MusicPlayer onExpandedChange={(expanded) => {
+        if (expanded) setPanelVisible(false);
+      }} />
       <div className="movement-hint" aria-hidden="true">
-        <span className="desktop-movement-hint">DRAG TO LOOK · WASD / ARROWS TO MOVE</span>
+        <span className="desktop-movement-hint">DRAG TO LOOK · WASD / ARROWS TO MOVE · R TO RETURN</span>
         <span className="touch-movement-hint">DRAG TO LOOK · JOYSTICK TO MOVE</span>
       </div>
       <div className="mobile-movement" role="group" aria-label="Movement controls">
+        <button
+          className="return-view"
+          type="button"
+          aria-label="Return to starting view"
+          onClick={() => engineRef.current?.returnToStartView()}
+        >
+          RETURN
+        </button>
         <button
           className="move-joystick"
           type="button"
