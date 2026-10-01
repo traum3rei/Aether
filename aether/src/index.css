@@ -222,6 +222,36 @@ body {
   overflow-wrap: anywhere;
 }
 
+.aether[data-world="styx"] .aether-mark,
+.aether[data-world="styx"] .world-name {
+  color: rgba(249, 225, 255, 0.9);
+}
+
+.aether[data-world="styx"] .world-index,
+.aether[data-world="styx"] .control-heading,
+.aether[data-world="styx"] .control-note {
+  color: rgba(226, 183, 255, 0.62);
+}
+
+.aether[data-world="styx"] .world-controls,
+.aether[data-world="styx"] .panel-reveal {
+  border-color: rgba(226, 98, 255, 0.24);
+  background-color: rgba(20, 8, 36, 0.86);
+  box-shadow: 0 0 32px rgba(167, 42, 255, 0.12);
+}
+
+.aether[data-world="styx"] .parameter-control input {
+  accent-color: #ef7eff;
+}
+
+.aether[data-world="styx"] .live-indicator {
+  color: rgba(126, 239, 255, 0.9);
+}
+
+.aether[data-world="styx"] .live-indicator::before {
+  background: #76e8ff;
+}
+
 @media (hover: hover) {
   .aether:hover .panel-reveal,
   .panel-reveal:focus-visible,

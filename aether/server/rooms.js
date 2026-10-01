@@ -9,6 +9,7 @@ const allowedParameters = new Set([
   'particleCount', 'flowScale', 'flowStrength', 'damping', 'confinement',
   'radius', 'timeScale', 'sharpness', 'glow', 'particleSize',
 ]);
+const allowedWorlds = new Set(['pelagic', 'styx']);
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
@@ -41,6 +42,7 @@ websocketServer.on('connection', (socket) => {
           : {};
         room = {
           parameters,
+          worldId: allowedWorlds.has(message.worldId) ? message.worldId : 'pelagic',
           revision: 0,
           seed: randomSeed(),
           startTime: Date.now(),
@@ -52,6 +54,7 @@ websocketServer.on('connection', (socket) => {
       send(socket, {
         type: 'state',
         roomId,
+        worldId: room.worldId,
         parameters: room.parameters,
         revision: room.revision,
         seed: room.seed,
@@ -63,23 +66,29 @@ websocketServer.on('connection', (socket) => {
 
     if (message.type === 'update' && roomId && message.roomId === roomId) {
       const room = rooms.get(roomId);
-      if (!room || typeof message.parameters !== 'object' || message.parameters === null) return;
+      if (!room) return;
 
       const safeUpdates = {};
-      for (const [key, value] of Object.entries(message.parameters)) {
-        if (allowedParameters.has(key) && typeof value === 'number' && Number.isFinite(value)) {
-          safeUpdates[key] = value;
+      if (typeof message.parameters === 'object' && message.parameters !== null) {
+        for (const [key, value] of Object.entries(message.parameters)) {
+          if (allowedParameters.has(key) && typeof value === 'number' && Number.isFinite(value)) {
+            safeUpdates[key] = value;
+          }
         }
       }
-      if (Object.keys(safeUpdates).length === 0) return;
+
+      const nextWorldId = allowedWorlds.has(message.worldId) ? message.worldId : undefined;
+      if (Object.keys(safeUpdates).length === 0 && nextWorldId === undefined) return;
 
       room.parameters = { ...room.parameters, ...safeUpdates };
+      if (nextWorldId !== undefined) room.worldId = nextWorldId;
       room.revision += 1;
       const effectiveTime = Date.now() + 150;
       broadcast(roomId, {
         type: 'update',
         roomId,
-        parameters: safeUpdates,
+        ...(Object.keys(safeUpdates).length > 0 ? { parameters: safeUpdates } : {}),
+        ...(nextWorldId !== undefined ? { worldId: nextWorldId } : {}),
         revision: room.revision,
         effectiveTime,
       });

@@ -6,7 +6,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    exclude: ['three/webgpu', 'three/tsl'],
+    exclude: ['three', 'three/webgpu', 'three/tsl'],
   },
   server: {
     proxy: {

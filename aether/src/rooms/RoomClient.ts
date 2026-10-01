@@ -1,9 +1,10 @@
 import type { FirstWorldParameters } from '../worlds/FirstWorld';
+import type { WorldId } from '../worlds/WorldId';
 
 export type RoomMessage =
-  | { type: 'join'; roomId: string; parameters?: FirstWorldParameters }
-  | { type: 'state'; roomId: string; parameters: FirstWorldParameters; revision: number; seed: number; startTime: number }
-  | { type: 'update'; roomId: string; parameters: Partial<FirstWorldParameters>; revision: number; effectiveTime: number }
+  | { type: 'join'; roomId: string; worldId: WorldId; parameters?: FirstWorldParameters }
+  | { type: 'state'; roomId: string; worldId: WorldId; parameters: FirstWorldParameters; revision: number; seed: number; startTime: number }
+  | { type: 'update'; roomId: string; worldId?: WorldId; parameters?: Partial<FirstWorldParameters>; revision: number; effectiveTime: number }
   | { type: 'presence'; roomId: string; viewers: number }
   | { type: 'error'; message: string };
 
@@ -11,12 +12,12 @@ export class RoomClient {
   private socket: WebSocket | null = null;
   private readonly listeners = new Set<(message: RoomMessage) => void>();
 
-  connect(roomId: string, parameters: FirstWorldParameters) {
+  connect(roomId: string, worldId: WorldId, parameters: FirstWorldParameters) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
     this.socket = socket;
     socket.addEventListener('open', () => {
-      socket.send(JSON.stringify({ type: 'join', roomId, parameters } satisfies RoomMessage));
+      socket.send(JSON.stringify({ type: 'join', roomId, worldId, parameters } satisfies RoomMessage));
     });
     socket.addEventListener('message', (event) => {
       try {
@@ -37,6 +38,12 @@ export class RoomClient {
   sendUpdate(roomId: string, parameters: Partial<FirstWorldParameters>) {
     if (this.socket?.readyState !== WebSocket.OPEN) return false;
     this.socket.send(JSON.stringify({ type: 'update', roomId, parameters }));
+    return true;
+  }
+
+  sendWorldUpdate(roomId: string, worldId: WorldId) {
+    if (this.socket?.readyState !== WebSocket.OPEN) return false;
+    this.socket.send(JSON.stringify({ type: 'update', roomId, worldId }));
     return true;
   }
 

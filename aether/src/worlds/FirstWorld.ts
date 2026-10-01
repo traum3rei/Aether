@@ -215,7 +215,7 @@ export class FirstWorld {
     await renderer.computeAsync(this.computeInit);
   }
 
-  update(renderer: THREE.WebGPURenderer, deltaSeconds: number) {
+  update(renderer: THREE.WebGPURenderer, deltaSeconds: number, _camera?: THREE.PerspectiveCamera) {
     this.frameDelta.value = Math.min(Math.max(deltaSeconds, 0), 0.05);
     renderer.compute(this.computeUpdate);
   }
