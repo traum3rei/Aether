@@ -12,10 +12,7 @@ export class AetherRenderer {
 
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25) * this.resolutionScale);
 
-    this.renderer.setSize(
-      window.innerWidth,
-      window.innerHeight,
-    );
+    this.renderer.setSize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight, false);
   }
 
   async init() {
@@ -23,13 +20,13 @@ export class AetherRenderer {
   }
 
   resize(width: number, height: number) {
-    this.renderer.setSize(width, height);
+    this.renderer.setSize(width, height, false);
   }
 
   setResolutionScale(scale: number) {
     this.resolutionScale = THREE.MathUtils.clamp(scale, 0.5, 1);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25) * this.resolutionScale);
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(this.renderer.domElement.clientWidth || window.innerWidth, this.renderer.domElement.clientHeight || window.innerHeight, false);
   }
 
   dispose() {

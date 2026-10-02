@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server/dev.mjs",
     "rooms": "node server/rooms.js",
-    "dev:all": "node server/dev.mjs",
+    "dev:all": "npm run dev",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

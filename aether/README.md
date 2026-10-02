@@ -4,10 +4,10 @@
 
 ## Development
 
-Install dependencies with `npm install`, then run both the Vite app and WebSocket room server:
+Install dependencies with `npm install`, then run the Vite app and WebSocket room server together:
 
 ```sh
-npm run dev:all
+npm run dev
 ```
 
 The app is served by Vite. The room server listens on port `8787` by default and is proxied by Vite at `/ws`. Set `PORT` to change the room server port.

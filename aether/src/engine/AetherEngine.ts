@@ -120,11 +120,9 @@ export class AetherEngine {
   }
 
   private handleResize = () => {
-    const width =
-      window.innerWidth;
-
-    const height =
-      window.innerHeight;
+    const bounds = this.renderer.renderer.domElement.getBoundingClientRect();
+    const width = bounds.width || window.innerWidth;
+    const height = bounds.height || window.innerHeight;
 
     this.camera.aspect =
       width / height;
