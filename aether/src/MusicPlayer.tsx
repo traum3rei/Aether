@@ -88,7 +88,10 @@ export function MusicPlayer({ onExpandedChange }: MusicPlayerProps) {
         preload="metadata"
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
         onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
-        onPlay={() => setIsPlaying(true)}
+        onPlay={(event) => {
+          setIsPlaying(true);
+          window.dispatchEvent(new CustomEvent('aether:audio-element', { detail: event.currentTarget }));
+        }}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
           if (tracks.length > 1) moveTrack(1);

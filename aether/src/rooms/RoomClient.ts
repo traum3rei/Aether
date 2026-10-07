@@ -3,14 +3,15 @@ import type { WorldId } from '../worlds/WorldId';
 
 export type RoomMessage =
   | { type: 'join'; roomId: string; worldId: WorldId; parameters?: FirstWorldParameters }
-  | { type: 'state'; roomId: string; worldId: WorldId; parameters: FirstWorldParameters; revision: number; seed: number; startTime: number }
-  | { type: 'update'; roomId: string; worldId?: WorldId; parameters?: Partial<FirstWorldParameters>; revision: number; effectiveTime: number }
+  | { type: 'state'; roomId: string; worldId: WorldId; parameters: FirstWorldParameters; graphs?: Partial<Record<WorldId, unknown>>; revision: number; seed: number; startTime: number }
+  | { type: 'update'; roomId: string; worldId?: WorldId; parameters?: Partial<FirstWorldParameters>; graph?: { worldId: WorldId; value: unknown }; revision: number; effectiveTime: number }
   | { type: 'presence'; roomId: string; viewers: number }
   | { type: 'error'; message: string };
 
 export class RoomClient {
   private socket: WebSocket | null = null;
   private readonly listeners = new Set<(message: RoomMessage) => void>();
+  private readonly pendingGraphs = new Map<WorldId, unknown>();
 
   connect(roomId: string, worldId: WorldId, parameters: FirstWorldParameters) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -18,6 +19,10 @@ export class RoomClient {
     this.socket = socket;
     socket.addEventListener('open', () => {
       socket.send(JSON.stringify({ type: 'join', roomId, worldId, parameters } satisfies RoomMessage));
+      for (const [graphWorldId, graph] of this.pendingGraphs) {
+        socket.send(JSON.stringify({ type: 'update', roomId, graph: { worldId: graphWorldId, value: graph } }));
+      }
+      this.pendingGraphs.clear();
     });
     socket.addEventListener('message', (event) => {
       try {
@@ -47,6 +52,15 @@ export class RoomClient {
     return true;
   }
 
+  sendGraphUpdate(roomId: string, worldId: WorldId, graph: unknown) {
+    if (this.socket?.readyState !== WebSocket.OPEN) {
+      this.pendingGraphs.set(worldId, graph);
+      return true;
+    }
+    this.socket.send(JSON.stringify({ type: 'update', roomId, graph: { worldId, value: graph } }));
+    return true;
+  }
+
   subscribe(listener: (message: RoomMessage) => void) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -55,6 +69,7 @@ export class RoomClient {
   disconnect() {
     this.socket?.close();
     this.socket = null;
+    this.pendingGraphs.clear();
     this.listeners.clear();
   }
 }

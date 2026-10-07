@@ -6,8 +6,22 @@ const port = Number(process.env.PORT ?? 8787);
 const server = createServer();
 const websocketServer = new WebSocketServer({ server, path: '/ws' });
 const allowedParameters = new Set([
-  'particleCount', 'flowScale', 'flowStrength', 'damping', 'confinement',
-  'radius', 'timeScale', 'sharpness', 'glow', 'particleSize',
+  'particleCount', 'particleShape', 'sourceSize', 'sourceSpeed', 'flowScale', 'flowStrength', 'turbulenceScale', 'turbulenceStrength',
+  'vortexRadius', 'vortexStrength', 'attractorRadius', 'attractorStrength', 'gravityStrength',
+  'waveScale', 'waveStrength', 'damping', 'confinement', 'radius', 'timeScale', 'sharpness',
+  'glow', 'particleSize', 'palette', 'paletteMix', 'seed',
+  'raymarchScale', 'raymarchShape', 'raymarchSpeed', 'raymarchOrbit', 'raymarchTwist', 'raymarchFilament',
+  'raymarchDetail', 'raymarchPalette', 'raymarchGlow', 'raymarchDepth', 'raymarchZoom', 'raymarchSpread',
+  'hydrosSpiralScale', 'hydrosRotation', 'hydrosWaveHeight', 'hydrosWaveScale', 'hydrosWaveSpeed',
+  'hydrosSplash', 'hydrosCurrent', 'hydrosFog', 'hydrosLight', 'hydrosBubbles',
+  'y2kModelScale', 'y2kMaterialColor', 'y2kTintMix', 'y2kMetalness', 'y2kRoughness',
+  'y2kClearcoat', 'y2kIridescence', 'y2kTransmission', 'y2kEmission', 'y2kEmissionColor', 'y2kEmissionPulse', 'y2kRotationSpeed',
+  'y2kOrbit', 'y2kNebula', 'y2kStars', 'y2kSunEmission', 'y2kBloom', 'y2kGlowScale', 'y2kStarSize', 'y2kTwinkle',
+  'y2kNebulaScale', 'y2kNebulaSpeed', 'y2kSunScale', 'y2kBackdrop', 'y2kReflection', 'y2kLight', 'y2kFov',
+  'styxModelScale', 'styxMetalness', 'styxRoughness', 'styxReflection', 'styxRingScale', 'styxRingSpeed', 'styxRingEnergy',
+  'styxChaoCount', 'styxChaoScale', 'styxChaoOrbit', 'styxChaoSpeed', 'styxStars', 'styxStarSize', 'styxLight', 'styxPulse',
+  'styxBloom', 'styxGlowScale', 'styxCameraMotion', 'styxCameraSpeed', 'styxCameraDistance', 'styxCameraAim',
+  'styxCameraFov', 'styxBackdrop', 'styxChromeTint',
 ]);
 const allowedWorlds = new Set(['pelagic', 'styx', 'y2k', 'hydros', 'raymarch']);
 
@@ -42,6 +56,7 @@ websocketServer.on('connection', (socket) => {
           : {};
         room = {
           parameters,
+          graphs: {},
           worldId: allowedWorlds.has(message.worldId) ? message.worldId : 'pelagic',
           revision: 0,
           seed: randomSeed(),
@@ -56,6 +71,7 @@ websocketServer.on('connection', (socket) => {
         roomId,
         worldId: room.worldId,
         parameters: room.parameters,
+        graphs: room.graphs,
         revision: room.revision,
         seed: room.seed,
         startTime: room.startTime,
@@ -78,10 +94,14 @@ websocketServer.on('connection', (socket) => {
       }
 
       const nextWorldId = allowedWorlds.has(message.worldId) ? message.worldId : undefined;
-      if (Object.keys(safeUpdates).length === 0 && nextWorldId === undefined) return;
+      const graphWorldId = allowedWorlds.has(message.graph?.worldId) ? message.graph.worldId : undefined;
+      const graphValue = graphWorldId && message.graph.value && typeof message.graph.value === 'object'
+        && Buffer.byteLength(JSON.stringify(message.graph.value)) <= 250_000 ? message.graph.value : undefined;
+      if (Object.keys(safeUpdates).length === 0 && nextWorldId === undefined && graphValue === undefined) return;
 
       room.parameters = { ...room.parameters, ...safeUpdates };
       if (nextWorldId !== undefined) room.worldId = nextWorldId;
+      if (graphWorldId && graphValue !== undefined) room.graphs[graphWorldId] = graphValue;
       room.revision += 1;
       const effectiveTime = Date.now() + 150;
       broadcast(roomId, {
@@ -89,6 +109,7 @@ websocketServer.on('connection', (socket) => {
         roomId,
         ...(Object.keys(safeUpdates).length > 0 ? { parameters: safeUpdates } : {}),
         ...(nextWorldId !== undefined ? { worldId: nextWorldId } : {}),
+        ...(graphWorldId && graphValue !== undefined ? { graph: { worldId: graphWorldId, value: graphValue } } : {}),
         revision: room.revision,
         effectiveTime,
       });

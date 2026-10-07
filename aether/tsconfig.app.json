@@ -22,5 +22,12 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/HydrosGraphEditor.tsx",
+    "src/ParticleGraphEditor.tsx",
+    "src/RaymarchGraphEditor.tsx",
+    "src/StyxGraphEditor.tsx",
+    "src/Y2KGraphEditor.tsx"
+  ]
 }

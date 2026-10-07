@@ -6,14 +6,20 @@ import { isWorldId, worldNames, type WorldId } from './worlds/WorldId';
 import { AetherEngine } from './engine/AetherEngine';
 import { RoomClient, type RoomMessage } from './rooms/RoomClient';
 import { MusicPlayer } from './MusicPlayer';
+import { GeneralGraphEditor, graphStorageKey } from './GeneralGraphEditor';
+import type { Graph } from './GeneralGraphEditor';
+import { compileWorldDocument, isWorldDocument, serializeWorldDocument, type EditorGraphLike, type WorldDocument } from './worlds/WorldGraph';
 
-interface ParameterControlProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
+type ExperienceMode = 'gallery' | 'studio' | 'live';
+type CustomWorld = { id: string; name: string; baseWorldId?: WorldId };
+
+function readCustomWorlds(): CustomWorld[] {
+  try {
+    const saved = localStorage.getItem('aether.custom-worlds.v1');
+    const parsed = saved ? JSON.parse(saved) as unknown : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is CustomWorld => Boolean(entry && typeof entry.id === 'string' && entry.id.startsWith('custom-') && typeof entry.name === 'string' && (entry.baseWorldId === undefined || isWorldId(entry.baseWorldId))));
+  } catch { return []; }
 }
 
 function readParameters(value: unknown): FirstWorldParameters {
@@ -28,24 +34,6 @@ function readParameters(value: unknown): FirstWorldParameters {
   return merged;
 }
 
-function ParameterControl({ label, value, min, max, step, onChange }: ParameterControlProps) {
-  return (
-    <label className="parameter-control">
-      <span className="parameter-label">{label}</span>
-      <span className="parameter-value">{value.toFixed(2)}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.currentTarget.value))}
-        aria-label={label}
-      />
-    </label>
-  );
-}
-
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<AetherEngine | null>(null);
@@ -54,11 +42,14 @@ export function App() {
   const [viewers, setViewers] = useState(1);
   const [roomElapsed, setRoomElapsed] = useState(0);
   const [panelVisible, setPanelVisible] = useState(false);
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>('gallery');
+  const [activeGraphId, setActiveGraphId] = useState<string | null>(null);
+  const [customWorlds, setCustomWorlds] = useState<CustomWorld[]>(readCustomWorlds);
   const [moveStick, setMoveStick] = useState({ x: 0, y: 0 });
   const moveStickPointer = useRef<number | null>(null);
   const [roomStatus, setRoomStatus] = useState<'connecting' | 'live' | 'offline'>('connecting');
   const [engineError, setEngineError] = useState<string | null>(null);
-  const [roomId, setRoomId] = useState(() => new URLSearchParams(window.location.search).get('room') ?? 'room-01');
+  const [roomId] = useState(() => new URLSearchParams(window.location.search).get('room') ?? 'room-01');
   const [worldId, setWorldId] = useState<WorldId>(() => {
     const queryWorld = new URLSearchParams(window.location.search).get('world');
     return isWorldId(queryWorld)
@@ -148,11 +139,47 @@ export function App() {
   useEffect(() => {
     const client = new RoomClient();
     roomClientRef.current = client;
+    const receiveGraph = (graphWorldId: WorldId, graph: unknown, remote: boolean, graphId = graphWorldId, activate = true) => {
+      if (!graph || typeof graph !== 'object') return;
+      let document: WorldDocument;
+      let runtimeGraph: ReturnType<typeof compileWorldDocument>;
+      try {
+        document = isWorldDocument(graph)
+          ? graph
+          : serializeWorldDocument(graph as EditorGraphLike, graphId, worldNames[graphWorldId]);
+        runtimeGraph = compileWorldDocument(document);
+        localStorage.setItem(graphStorageKey(graphId), JSON.stringify(document));
+      } catch (error) {
+        setEngineError(error instanceof Error ? error.message : String(error));
+        return;
+      }
+      const customWorld = graphId.startsWith('custom-') ? readCustomWorlds().find((world) => world.id === graphId) : undefined;
+      if (activate) runEngineAction((engine) => engine.setRenderGraph(runtimeGraph as import('./engine/GraphRenderer').RenderGraph, !customWorld?.baseWorldId));
+      if (!remote && graphId === graphWorldId) client.sendGraphUpdate(roomId, graphWorldId, document);
+    };
+    const onGraph = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.fromRoom) return;
+      if (!isWorldId(detail?.worldId) || !detail.graph) return;
+      const graphId = typeof detail.graphId === 'string' ? detail.graphId : detail.worldId;
+      receiveGraph(detail.worldId, detail.graph, Boolean(detail.remote), graphId);
+    };
+    window.addEventListener('aether:graph', onGraph);
+    const onInputs = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.inputs) runEngineAction((engine) => engine.setRenderInputs(detail.inputs));
+    };
+    window.addEventListener('aether:render-inputs', onInputs);
     const initialParameters = parametersRef.current;
     const unsubscribe = client.subscribe((message: RoomMessage) => {
       if (message.type !== 'error' && message.roomId !== roomId) return;
       if (message.type === 'state') {
+        if (message.graphs?.[message.worldId]) {
+          receiveGraph(message.worldId, message.graphs[message.worldId], true, message.worldId, false);
+          window.dispatchEvent(new CustomEvent('aether:graph', { detail: { fromRoom: true, remote: true, worldId: message.worldId, graphId: message.worldId, graph: message.graphs[message.worldId] } }));
+        }
         const sharedWorldId = isWorldId(message.worldId) ? message.worldId : worldIdRef.current;
+        setActiveGraphId(null);
         setRoomStatus('live');
         worldIdRef.current = sharedWorldId;
         setWorldId(sharedWorldId);
@@ -172,11 +199,16 @@ export function App() {
         setRoomElapsed(elapsed);
         engineRef.current?.setSharedTimeline(message.startTime, elapsed);
       } else if (message.type === 'update') {
+        if (message.graph && isWorldId(message.graph.worldId)) {
+          receiveGraph(message.graph.worldId, message.graph.value, true, message.graph.worldId, false);
+          window.dispatchEvent(new CustomEvent('aether:graph', { detail: { fromRoom: true, remote: true, worldId: message.graph.worldId, graphId: message.graph.worldId, graph: message.graph.value } }));
+        }
         const updates = message.parameters ?? {};
         const delay = Math.max(0, message.effectiveTime - Date.now());
         window.setTimeout(() => {
           const nextWorldId = isWorldId(message.worldId) ? message.worldId : undefined;
           if (nextWorldId) {
+            setActiveGraphId(null);
             worldIdRef.current = nextWorldId;
             setWorldId(nextWorldId);
             const url = new URL(window.location.href);
@@ -207,82 +239,16 @@ export function App() {
 
     return () => {
       unsubscribe();
+      window.removeEventListener('aether:graph', onGraph);
+      window.removeEventListener('aether:render-inputs', onInputs);
       client.disconnect();
       roomClientRef.current = null;
       window.removeEventListener('offline', handleOffline);
     };
   }, [roomId]);
 
-  const updateParameter = <K extends keyof FirstWorldParameters>(
-    key: K,
-    value: FirstWorldParameters[K],
-  ) => {
-    const next = { ...parameters, [key]: value };
-    parametersRef.current = next;
-    setParameters(next);
-    setRooms((current) => {
-      const updated = { ...current, [roomId]: next };
-      localStorage.setItem('aether.rooms.v1', JSON.stringify(updated));
-      return updated;
-    });
-    const update = { [key]: value };
-    if (!roomClientRef.current?.sendUpdate(roomId, update)) {
-      setRoomStatus('offline');
-    }
-    runEngineAction((engine) => engine.setWorldParameters(update));
-  };
-
-  const resetParameters = () => {
-    const defaults = readParameters({ ...defaultFirstWorldParameters, seed: parameters.seed });
-    parametersRef.current = defaults;
-    parametersRef.current = defaults;
-    setParameters(defaults);
-    setRooms((current) => {
-      const updated = { ...current, [roomId]: defaults };
-      localStorage.setItem('aether.rooms.v1', JSON.stringify(updated));
-      return updated;
-    });
-    if (!roomClientRef.current?.sendUpdate(roomId, defaults)) {
-      setRoomStatus('offline');
-    }
-    runEngineAction((engine) => engine.setWorldParameters(defaults));
-  };
-
-  const switchRoom = (nextRoomId: string) => {
-    setRoomId(nextRoomId);
-    const nextWorldId = nextRoomId === 'room-04'
-      ? 'y2k'
-      : nextRoomId === 'room-05' ? 'raymarch' : worldId;
-    const query = new URLSearchParams(window.location.search);
-    const shared = query.get('settings');
-    let nextParameters = readParameters(rooms[nextRoomId]);
-    if (shared && query.get('room') === nextRoomId) {
-      try {
-        nextParameters = readParameters(JSON.parse(atob(shared)));
-      } catch {
-        nextParameters = readParameters(rooms[nextRoomId]);
-      }
-    }
-    parametersRef.current = nextParameters;
-    parametersRef.current = nextParameters;
-    setParameters(nextParameters);
-    if (nextWorldId !== worldId) {
-      worldIdRef.current = nextWorldId;
-      setWorldId(nextWorldId);
-      if (!roomClientRef.current?.sendWorldUpdate(nextRoomId, nextWorldId)) {
-        setRoomStatus('offline');
-      }
-      runEngineAction((engine) => engine.setWorld(nextWorldId, nextParameters));
-    } else {
-      runEngineAction((engine) => engine.setWorldParameters(nextParameters));
-    }
-    const url = new URL(window.location.href);
-    url.searchParams.set('room', nextRoomId);
-    url.searchParams.set('world', nextWorldId);
-    window.history.replaceState(null, '', url);
-  };
-
   const switchWorld = (nextWorldId: WorldId) => {
+    setActiveGraphId(null);
     worldIdRef.current = nextWorldId;
     setWorldId(nextWorldId);
     if (!roomClientRef.current?.sendWorldUpdate(roomId, nextWorldId)) {
@@ -292,6 +258,53 @@ export function App() {
     const url = new URL(window.location.href);
     url.searchParams.set('world', nextWorldId);
     window.history.replaceState(null, '', url);
+  };
+
+  const createCustomWorld = () => {
+    const world = { id: `custom-${crypto.randomUUID()}`, name: 'Untitled world' };
+    setCustomWorlds((current) => {
+      const next = [...current, world];
+      localStorage.setItem('aether.custom-worlds.v1', JSON.stringify(next));
+      return next;
+    });
+    setActiveGraphId(world.id);
+    setExperienceMode('studio');
+    setPanelVisible(true);
+  };
+
+  const openCustomWorld = (world: CustomWorld) => {
+    setActiveGraphId(world.id);
+    setExperienceMode('gallery');
+    setPanelVisible(false);
+    try {
+      const graph = localStorage.getItem(graphStorageKey(world.id));
+      if (graph && world.baseWorldId) {
+        worldIdRef.current = world.baseWorldId;
+        setWorldId(world.baseWorldId);
+        runEngineAction(async (engine) => {
+          await engine.setWorld(world.baseWorldId!, parametersRef.current);
+          await engine.setRenderGraph(JSON.parse(graph), false);
+        });
+      } else if (graph) {
+        window.dispatchEvent(new CustomEvent('aether:graph', { detail: { worldId, graphId: world.id, graph: JSON.parse(graph) } }));
+      }
+    } catch { /* A missing graph opens as an empty network in Studio. */ }
+  };
+
+  const saveCustomWorld = (name: string, graph: Graph) => {
+    const id = activeGraphId?.startsWith('custom-') ? activeGraphId : `custom-${crypto.randomUUID()}`;
+    const document = serializeWorldDocument(graph as unknown as EditorGraphLike, id, name);
+    localStorage.setItem(graphStorageKey(id), JSON.stringify(document));
+    const baseWorldId = customWorlds.find((world) => world.id === id)?.baseWorldId ?? (activeGraphId ? undefined : worldId);
+    setCustomWorlds((current) => {
+      const existing = current.some((world) => world.id === id);
+      const next = existing
+        ? current.map((world) => world.id === id ? { ...world, name, baseWorldId } : world)
+        : [...current, { id, name, baseWorldId }];
+      localStorage.setItem('aether.custom-worlds.v1', JSON.stringify(next));
+      return next;
+    });
+    setActiveGraphId(id);
   };
 
   const shareRoom = async () => {
@@ -328,7 +341,7 @@ export function App() {
   };
 
   return (
-    <main className="aether" data-world={worldId}>
+    <main className="aether" data-world={worldId} data-mode={experienceMode}>
       <canvas ref={canvasRef} />
       <MusicPlayer onExpandedChange={(expanded) => {
         if (expanded) setPanelVisible(false);
@@ -369,156 +382,51 @@ export function App() {
         <div className="aether-mark">AETHER</div>
         <div className="world-title">
           <span className="world-index">
-            WORLD {worldId === 'pelagic' ? '01' : worldId === 'styx' ? '02' : worldId === 'y2k' ? '03' : worldId === 'hydros' ? '04' : '05'} · {roomId.toUpperCase()}
+            {activeGraphId?.startsWith('custom-') ? 'CREATED WORLD' : `WORLD ${worldId === 'pelagic' ? '01' : worldId === 'styx' ? '02' : worldId === 'y2k' ? '03' : worldId === 'hydros' ? '04' : '05'} · ${roomId.toUpperCase()}`}
           </span>
-          <span className="world-name">{worldNames[worldId]}</span>
+          <span className="world-name">{customWorlds.find((world) => world.id === activeGraphId)?.name ?? worldNames[worldId]}</span>
         </div>
+        <nav className="experience-switch" aria-label="Experience">
+          <button type="button" className={experienceMode === 'gallery' ? 'active' : ''} onClick={() => { setExperienceMode('gallery'); setPanelVisible(false); if (!activeGraphId) runEngineAction((engine) => engine.setWorld(worldIdRef.current, parametersRef.current)); }}>GALLERY</button>
+          <button type="button" className={experienceMode === 'studio' ? 'active' : ''} onClick={() => { setExperienceMode('studio'); setPanelVisible(true); }}>STUDIO</button>
+          <button type="button" className={experienceMode === 'live' ? 'active' : ''} onClick={() => { setExperienceMode('live'); setPanelVisible(false); }}>LIVE</button>
+          {experienceMode === 'gallery' && !activeGraphId && <button type="button" onClick={() => void shareRoom()}>SHARE</button>}
+        </nav>
+        <div className={`room-presence ${activeGraphId ? '' : roomStatus}`}>{activeGraphId ? 'SAVED ON THIS DEVICE' : roomStatus === 'live' ? `${viewers} HERE · ${Math.floor(roomElapsed / 60)}:${String(Math.floor(roomElapsed % 60)).padStart(2, '0')}` : 'LOCAL WORLD'}</div>
       </header>
 
-      <button
+      {experienceMode === 'live' && <button className="live-return" type="button" onClick={() => { setExperienceMode('gallery'); if (!activeGraphId) runEngineAction((engine) => engine.setWorld(worldIdRef.current, parametersRef.current)); }}>EXIT LIVE</button>}
+
+      {experienceMode !== 'live' && <nav className="gallery-worlds" aria-label="Worlds">
+        {(Object.keys(worldNames) as WorldId[]).map((id, index) => (
+          <button key={id} type="button" className={id === worldId ? 'active' : ''} onClick={() => switchWorld(id)} aria-current={id === worldId ? 'page' : undefined}>
+            <span>{String(index + 1).padStart(2, '0')}</span>{worldNames[id]}
+          </button>
+        ))}
+        {customWorlds.map((world, index) => <button key={world.id} type="button" className={activeGraphId === world.id ? 'active' : ''} aria-current={activeGraphId === world.id ? 'page' : undefined} onClick={() => openCustomWorld(world)}>
+          <span>C{String(index + 1).padStart(2, '0')}</span>{world.name}
+        </button>)}
+        {experienceMode === 'gallery' && <button type="button" className="create-world-button" onClick={createCustomWorld}><span>＋</span>CREATE WORLD</button>}
+      </nav>}
+
+      {experienceMode === 'studio' && <button
         className="panel-reveal"
         type="button"
         aria-expanded={panelVisible}
         aria-controls="world-controls"
         onClick={() => setPanelVisible((visible) => !visible)}
       >
-        {panelVisible ? 'CLOSE' : 'STUDIO'}
-      </button>
+        {panelVisible ? 'HIDE STUDIO' : 'SHAPE WORLD'}
+      </button>}
 
-      <aside
-        id="world-controls"
-        className={`world-controls ${panelVisible ? 'visible' : ''}`}
-        aria-label="World parameters"
-        onMouseEnter={() => {
-          if (window.matchMedia('(hover: hover)').matches) setPanelVisible(true);
-        }}
-        onMouseLeave={() => {
-          if (window.matchMedia('(hover: hover)').matches) setPanelVisible(false);
-        }}
-        onFocus={() => setPanelVisible(true)}
-      >
-        <div className="control-heading">
-          <label className="room-select-label">
-            ROOM
-            <select value={roomId} onChange={(event) => switchRoom(event.currentTarget.value)}>
-              <option value="room-01">01 / ABYSS</option>
-              <option value="room-02">02 / BLOOM</option>
-              <option value="room-03">03 / DRIFT</option>
-              <option value="room-04">04 / DREAM CIRCUIT</option>
-              <option value="room-05">05 / GHOST CIRCUIT</option>
-            </select>
-          </label>
-          <label className="room-select-label">
-            WORLD
-            <select value={worldId} onChange={(event) => {
-              if (isWorldId(event.currentTarget.value)) switchWorld(event.currentTarget.value);
-            }}>
-              <option value="pelagic">01 / PELAGIC</option>
-              <option value="styx">02 / STYX</option>
-              <option value="y2k">03 / Y2K</option>
-              <option value="hydros">04 / HYDROS</option>
-              <option value="raymarch">05 / RAYMARCH</option>
-            </select>
-          </label>
-          <div className="room-actions">
-            <button className="share-room" type="button" onClick={resetParameters}>RESET</button>
-            <button className="share-room" type="button" onClick={() => void shareRoom()}>SHARE</button>
-            <span className={`live-indicator ${roomStatus}`} title={`${viewers} viewer${viewers === 1 ? '' : 's'} connected`}>
-              {roomStatus === 'live' ? `${viewers} ONLINE · ${roomElapsed.toFixed(0)}s` : roomStatus.toUpperCase()}
-            </span>
-          </div>
-        </div>
-        <div className="parameter-grid">
-        {worldId === 'pelagic' && (
-          <>
-            <ParameterControl
-              label="Particle count"
-              value={parameters.particleCount}
-              min={12_000}
-              max={100_000}
-              step={4_000}
-              onChange={(value) => updateParameter('particleCount', value)}
-            />
-            <ParameterControl
-              label="Flow scale"
-              value={parameters.flowScale}
-              min={0.4}
-              max={3}
-              step={0.01}
-              onChange={(value) => updateParameter('flowScale', value)}
-            />
-          </>
-        )}
-        <ParameterControl
-          label={worldId === 'styx' ? 'Orbit speed' : worldId === 'y2k' ? 'Pulse speed' : worldId === 'hydros' ? 'Current speed' : worldId === 'raymarch' ? 'Pulse speed' : 'Flow strength'}
-          value={parameters.flowStrength}
-          min={0}
-          max={1.5}
-          step={0.01}
-          onChange={(value) => updateParameter('flowStrength', value)}
-        />
-        {worldId === 'pelagic' && (
-          <ParameterControl
-            label="Confinement"
-            value={parameters.confinement}
-            min={0}
-            max={2}
-            step={0.01}
-            onChange={(value) => updateParameter('confinement', value)}
-          />
-        )}
-        <ParameterControl
-          label={worldId === 'pelagic' ? 'World radius' : worldId === 'raymarch' ? 'Loop scale' : 'World scale'}
-          value={parameters.radius}
-          min={0.8}
-          max={3}
-          step={0.01}
-          onChange={(value) => updateParameter('radius', value)}
-        />
-        <ParameterControl
-          label="Time scale"
-          value={parameters.timeScale}
-          min={0}
-          max={2}
-          step={0.01}
-          onChange={(value) => updateParameter('timeScale', value)}
-        />
-        {worldId === 'pelagic' && (
-          <ParameterControl
-            label="Particle sharpness"
-            value={parameters.sharpness}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(value) => updateParameter('sharpness', value)}
-          />
-        )}
-        <ParameterControl
-          label="Glow"
-          value={parameters.glow}
-          min={0}
-          max={1}
-          step={0.01}
-          onChange={(value) => updateParameter('glow', value)}
-        />
-        {worldId === 'pelagic' && (
-          <ParameterControl
-            label="Particle size"
-            value={parameters.particleSize}
-            min={0.004}
-            max={0.022}
-            step={0.001}
-            onChange={(value) => updateParameter('particleSize', value)}
-          />
-        )}
-        </div>
-        <p className="control-note">
-          {worldId === 'pelagic'
-            ? 'Seed, clock and controls are shared. Particle integration remains local, so late joins do not replay prior motion.'
-            : 'World selection and controls are shared with everyone in this room. Motion is simulated locally on each device.'}
-        </p>
-        {engineError && <p className="engine-error" role="alert">Renderer: {engineError}</p>}
-      </aside>
+      {experienceMode === 'studio' && panelVisible && <GeneralGraphEditor
+        key={activeGraphId ?? worldId}
+        worldId={worldId}
+        graphId={activeGraphId ?? worldId}
+        title={customWorlds.find((world) => world.id === activeGraphId)?.name ?? worldNames[worldId]}
+        onSaveWorld={saveCustomWorld}
+      />}
+      {engineError && <div className="engine-error renderer-error" role="alert">Renderer · {engineError}</div>}
     </main>
   );
 }

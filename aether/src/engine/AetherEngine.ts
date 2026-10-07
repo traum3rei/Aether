@@ -1,23 +1,38 @@
 import * as THREE from 'three/webgpu';
 
 import { AetherRenderer } from './Renderer';
+import { GraphRenderer, type RenderGraph, type RenderInputs } from './GraphRenderer';
 import { FirstWorld, type FirstWorldParameters } from '../worlds/FirstWorld';
 import type { WorldId } from '../worlds/WorldId';
 
 const MAX_NAVIGATION_DISTANCE = 8;
 
-type AetherWorld =
-  | FirstWorld
-  | import('../worlds/StyxWorld').StyxWorld
-  | import('../worlds/Y2KWorld').Y2KWorld
-  | import('../worlds/HydrosWorld').HydrosWorld
-  | import('../worlds/RaymarchWorld').RaymarchWorld;
+type AetherWorld = {
+  getParameters: () => Readonly<FirstWorldParameters>;
+  setParameters: (parameters: Partial<FirstWorldParameters>) => void;
+  init: (renderer: THREE.WebGPURenderer) => Promise<void>;
+  update: (renderer: THREE.WebGPURenderer, deltaSeconds: number, camera?: THREE.PerspectiveCamera) => void;
+  setElapsedSeconds?: (elapsedSeconds: number) => void;
+  dispose: () => void;
+};
+
+class GraphWorld {
+  private readonly parameters: FirstWorldParameters;
+  constructor(parameters: FirstWorldParameters) { this.parameters = parameters; }
+  getParameters() { return this.parameters; }
+  setParameters(parameters: Partial<FirstWorldParameters>) { Object.assign(this.parameters, parameters); }
+  async init(_renderer: THREE.WebGPURenderer) {}
+  update(_renderer: THREE.WebGPURenderer, _deltaSeconds: number, _camera?: THREE.PerspectiveCamera) {}
+  dispose() {}
+}
 
 export class AetherEngine {
   private readonly renderer: AetherRenderer;
   private readonly scene: THREE.Scene;
+  private readonly graphRenderer: GraphRenderer;
   private readonly camera: THREE.PerspectiveCamera;
   private world: AetherWorld;
+  private graphActive = false;
   private worldId: WorldId = 'pelagic';
   private worldOperations = Promise.resolve();
   private previousFrameTime = 0;
@@ -31,6 +46,11 @@ export class AetherEngine {
   private moveSide = 0;
   private moveForward = 0;
   private readonly pressedKeys = new Set<string>();
+  private audioContext: AudioContext | null = null;
+  private audioAnalyser: AnalyserNode | null = null;
+  private audioSource: MediaElementAudioSourceNode | null = null;
+  private audioData = new Uint8Array(0);
+  private audioWaveData = new Uint8Array(0);
   private activePointerId: number | null = null;
   private pointerX = 0;
   private pointerY = 0;
@@ -46,7 +66,6 @@ export class AetherEngine {
 
     this.scene.background =
       new THREE.Color(0x020202);
-
     this.camera =
       new THREE.PerspectiveCamera(
         50,
@@ -61,6 +80,7 @@ export class AetherEngine {
       0,
       4,
     );
+    this.graphRenderer = new GraphRenderer(this.scene, this.camera, (settings) => this.renderer.setPostProcessing(settings));
 
     this.world =
       new FirstWorld(
@@ -72,6 +92,7 @@ export class AetherEngine {
     canvas.addEventListener('pointermove', this.handlePointerMove);
     canvas.addEventListener('pointerup', this.handlePointerEnd);
     canvas.addEventListener('pointercancel', this.handlePointerEnd);
+    window.addEventListener('aether:audio-element', this.handleAudioElement as EventListener);
     window.addEventListener('keydown', this.handleKeyDown);
     window.addEventListener('keyup', this.handleKeyUp);
     window.addEventListener('blur', this.handleBlur);
@@ -106,16 +127,15 @@ export class AetherEngine {
         Math.min(deltaSeconds, 1 / 30),
         this.navigationActive && this.worldId !== 'raymarch' ? undefined : this.camera,
       );
+      this.graphRenderer.update(this.sharedElapsed);
+      this.updateAudioInputs();
       if (this.navigationActive) this.updateNavigation(deltaSeconds);
 
       /*
        * Render
        */
 
-      gpu.render(
-        this.scene,
-        this.camera,
-      );
+      this.renderer.render(this.scene, this.camera);
     });
   }
 
@@ -156,7 +176,8 @@ export class AetherEngine {
   async setWorld(worldId: WorldId, parameters: Partial<FirstWorldParameters> = {}) {
     return this.enqueueWorldOperation(async () => {
       if (this.disposed) return;
-      if (worldId === this.worldId) {
+      if (worldId === this.worldId && !this.graphActive) {
+        this.graphRenderer.clearGraph();
         await this.applyWorldParameters(parameters);
         return;
       }
@@ -181,7 +202,9 @@ export class AetherEngine {
       }
 
       const previousWorld = this.world;
+      this.graphRenderer.clearGraph();
       this.world = nextWorld;
+      this.graphActive = false;
       this.worldId = worldId;
       this.renderer.setResolutionScale(worldId === 'raymarch' ? 0.5 : 1);
       this.scene.background = new THREE.Color(
@@ -196,6 +219,71 @@ export class AetherEngine {
         : null;
       previousWorld.dispose();
     });
+  }
+
+  setRenderGraph(graph: RenderGraph, replaceWorld = true) {
+    if (this.disposed) return Promise.resolve();
+    if (replaceWorld && !this.graphActive) {
+      const parameters = { ...this.world.getParameters() };
+      this.world.dispose();
+      this.world = new GraphWorld(parameters);
+      this.graphActive = true;
+    }
+    return this.graphRenderer.setGraph(graph, !replaceWorld);
+  }
+
+  clearRenderGraph() {
+    if (this.graphActive) return;
+    this.graphRenderer.clearGraph();
+  }
+
+  setRenderInputs(inputs: RenderInputs) {
+    this.graphRenderer.setInputs({ ...inputs, audio: this.readAudioLevels() });
+  }
+
+  private handleAudioElement = (event: CustomEvent<HTMLAudioElement>) => {
+    const element = event.detail;
+    if (!element || this.audioSource) return;
+    try {
+      this.audioContext = new AudioContext();
+      this.audioAnalyser = this.audioContext.createAnalyser();
+      this.audioAnalyser.fftSize = 1024;
+      this.audioAnalyser.smoothingTimeConstant = 0.78;
+      this.audioData = new Uint8Array(this.audioAnalyser.frequencyBinCount);
+      this.audioWaveData = new Uint8Array(this.audioAnalyser.fftSize);
+      this.audioSource = this.audioContext.createMediaElementSource(element);
+      this.audioSource.connect(this.audioAnalyser);
+      this.audioAnalyser.connect(this.audioContext.destination);
+      void this.audioContext.resume();
+      element.addEventListener('play', () => { void this.audioContext?.resume(); });
+    } catch (error) {
+      console.warn('Audio analysis is unavailable for this world.', error);
+    }
+  };
+
+  private readAudioLevels() {
+    if (!this.audioAnalyser) return { amplitude: 0, bass: 0, mid: 0, high: 0 };
+    this.audioAnalyser.getByteFrequencyData(this.audioData);
+    this.audioAnalyser.getByteTimeDomainData(this.audioWaveData);
+    let energy = 0;
+    for (const sample of this.audioWaveData) {
+      const centered = (sample - 128) / 128;
+      energy += centered * centered;
+    }
+    const amplitude = Math.sqrt(energy / this.audioWaveData.length);
+    const average = (fromHz: number, toHz: number) => {
+      const binHz = this.audioAnalyser!.context.sampleRate / this.audioAnalyser!.fftSize;
+      const from = Math.max(0, Math.floor(fromHz / binHz));
+      const to = Math.min(this.audioData.length, Math.ceil(toHz / binHz));
+      let total = 0;
+      for (let index = from; index < to; index += 1) total += this.audioData[index];
+      return to > from ? total / (to - from) / 255 : 0;
+    };
+    return { amplitude, bass: average(30, 250), mid: average(250, 2000), high: average(2000, 12000) };
+  }
+
+  private updateAudioInputs() {
+    this.graphRenderer.setAudioLevels(this.readAudioLevels());
   }
 
   private async applyWorldParameters(parameters: Partial<FirstWorldParameters>) {
@@ -388,6 +476,7 @@ export class AetherEngine {
     canvas.removeEventListener('pointermove', this.handlePointerMove);
     canvas.removeEventListener('pointerup', this.handlePointerEnd);
     canvas.removeEventListener('pointercancel', this.handlePointerEnd);
+    window.removeEventListener('aether:audio-element', this.handleAudioElement as EventListener);
     window.removeEventListener('keydown', this.handleKeyDown);
     window.removeEventListener('keyup', this.handleKeyUp);
     window.removeEventListener('blur', this.handleBlur);
@@ -400,6 +489,10 @@ export class AetherEngine {
       .setAnimationLoop(null);
 
     this.world.dispose();
+    this.graphRenderer.dispose();
+    this.audioSource?.disconnect();
+    this.audioAnalyser?.disconnect();
+    void this.audioContext?.close();
 
     this.renderer.dispose();
   }
